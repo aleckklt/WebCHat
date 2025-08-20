@@ -69,7 +69,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'WebChat.wsgi.application'
+ASGI_APPLICATION = 'WebChat.asgi.application'
 
 
 # Database
