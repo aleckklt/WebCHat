@@ -31,16 +31,31 @@ def create_conversation(request):
 
 @login_required
 def chat_home(request):
-    conversations = Conversation.objects.filter(participants=request.user)
-    return render(request, 'chat_app/home.html', {
-        'conversations': conversations
-    })
+    user = request.user
+    conversations = Conversation.objects.filter(participants=user).prefetch_related('messages', 'participants')
+    
+    unread_counts = {}
+    for conv in conversations:
+        count = conv.messages.exclude(sender=user).exclude(read_by=user).count()
+        unread_counts[conv.id] = count
+    
+    context = {
+        'conversations': conversations,
+        'unread_counts': unread_counts,
+        'user': user,
+    }
+    return render(request, 'chat_app/home.html', context)
 
 @login_required
 def chat_room(request, conversation_id):
     conversation = get_object_or_404(Conversation, id=conversation_id)
     if request.user not in conversation.participants.all():
-        return render(request, 'chat_app/access_denied.html')    
+        return render(request, 'chat_app/access_denied.html')
+    
+    unread_messages = conversation.messages.exclude(read_by=request.user)
+    for msg in unread_messages:
+        msg.read_by.add(request.user)
+    
     messages = conversation.messages.order_by('timestamp')
     return render(request, 'chat_app/chat.html', {
         'conversation': conversation,
