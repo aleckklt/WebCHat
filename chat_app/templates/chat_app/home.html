@@ -90,7 +90,7 @@
         }
 
         .new-chat-btn {
-            margin: 1rem;
+            margin-bottom: 0.5rem;
             font-size: 1rem;
             background-color: #00c853;
             border: none;
@@ -98,6 +98,16 @@
         }
         .new-chat-btn:hover {
             background-color: #00b44b;
+        }
+
+        .new-group-btn {
+            font-size: 1rem;
+            background-color: #2196f3;
+            border: none;
+            transition: background-color 0.3s ease;
+        }
+        .new-group-btn:hover {
+            background-color: #1976d2;
         }
 
         @media (max-width: 768px) {
@@ -138,12 +148,15 @@
                     {% endif %}
                 </a>
             {% empty %}
-            <p class="px-3 py-2 text-muted">Aucune conversation pour l'instant.</p>
+                <p class="px-3 py-2 text-muted">Aucune conversation pour l'instant.</p>
             {% endfor %}
         </div>
-        <div class="p-3 border-top">
-            <a href="{% url 'chat_app:create_conversation' %}" class="btn btn-success new-chat-btn w-100">
+        <div class="p-3 border-top d-flex flex-column gap-2">
+            <a href="{% url 'chat_app:create_conversation' %}" class="btn new-chat-btn w-100">
                 ➕ Nouvelle conversation
+            </a>
+            <a href="{% url 'chat_app:create_group' %}" class="btn new-group-btn w-100">
+                👥 Nouveau groupe
             </a>
         </div>
     </div>
