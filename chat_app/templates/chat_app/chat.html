@@ -143,15 +143,67 @@
             <p>Aucun message pour le moment, commencez la discussion !</p>
         {% endfor %}
     </div>
-    <form id="chat-form" class="chat-input-area" method="post" action="">
-        {% csrf_token %}
+    <form id="chat-form" class="chat-input-area">
         <textarea id="message-input" name="message" rows="2" placeholder="Écrire un message..." required></textarea>
         <button type="submit">Envoyer</button>
     </form>
-
 <script>
+    const conversationId = "{{ conversation.id }}";
+    const userName = "{{ user.username }}";
+
+    const wsScheme = window.location.protocol === "https:" ? "wss://" : "ws://";
+    const chatSocket = new WebSocket(wsScheme + window.location.host + `/ws/chat/${conversationId}/`);
+
+    const messageInput = document.getElementById('message-input');
+    const chatForm = document.getElementById('chat-form');
     const messagesDiv = document.getElementById('chat-messages');
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    chatSocket.onopen = () => {
+        console.log("WebSocket connection opened.");
+    };
+
+    chatSocket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log("Message reçu via WebSocket:", data);
+
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('message');
+
+        if (data.username === userName) {
+            messageElement.classList.add('user');
+        } else {
+            messageElement.classList.add('other');
+        }
+
+        messageElement.innerHTML = `
+            ${data.message.replace(/\n/g, '<br>')}
+            <div class="meta">${data.username} - ${data.timestamp}</div>
+        `;
+
+        messagesDiv.appendChild(messageElement);
+
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    };
+
+    chatSocket.onerror = (event) => {
+        console.error("WebSocket error observed:", event);
+        alert("Erreur WebSocket. La connexion a échoué.");
+    };
+
+    chatSocket.onclose = (event) => {
+        console.warn("Chat socket closed unexpectedly:", event);
+    };
+
+    chatForm.onsubmit = (event) => {
+        event.preventDefault();
+        const message = messageInput.value.trim();
+        if (message === '') return;
+
+        console.log("Envoi message via WebSocket:", message);
+
+        chatSocket.send(JSON.stringify({ 'message': message }));
+
+        messageInput.value = '';
+    };
 </script>
 </body>
 </html>

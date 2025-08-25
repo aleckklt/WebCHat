@@ -95,7 +95,7 @@
         </div>
         <div class="conversations-list">
             {% for conversation in conversations %}
-            <a href="{% url 'chat_app:chat_room' conversation_id %}" 
+            <a href="{% url 'chat_app:chat_room' conversation.id %}" 
                class="conversation-item {% if conversation.id == request.resolver_match.kwargs.conversation_id|default:'' %}active{% endif %}">
                 {% if conversation.is_group %}
                     Groupe : {{ conversation.name }}

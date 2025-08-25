@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-wki29*0p)hmvw5*zdvqfvlj!b+3a8f%o2hz^3wbyac88j2q8i0
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -70,7 +70,11 @@ TEMPLATES = [
 ]
 
 ASGI_APPLICATION = 'WebChat.asgi.application'
-
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
