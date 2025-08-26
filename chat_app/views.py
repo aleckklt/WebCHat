@@ -1,10 +1,33 @@
 from django.shortcuts import render, get_object_or_404, redirect
-from .models import Conversation
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from .models import Conversation
 from django.contrib.auth.models import User
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .models import Conversation, Message
+import json
+
+@login_required
+def chat_home(request):
+    user = request.user
+    conversation_id = request.GET.get('conversation_id')
+    conversation = None
+    messages = []
+
+    conversations = Conversation.objects.filter(participants=user).prefetch_related('messages', 'participants')
+
+    if conversation_id:
+        conversation = get_object_or_404(Conversation, id=conversation_id, participants=user)
+        unread_messages = conversation.messages.exclude(read_by=user)
+        for msg in unread_messages:
+            msg.read_by.add(user)
+        messages = conversation.messages.order_by('timestamp')
+
+    context = {
+        'conversations': conversations,
+        'conversation': conversation,
+        'messages': messages
+    }
+    return render(request, 'chat_app/home.html', context)
 
 @login_required
 def create_conversation(request):
@@ -14,6 +37,7 @@ def create_conversation(request):
             other_user = User.objects.get(username=other_username)
         except User.DoesNotExist:
             return render(request, 'chat_app/create_conversation.html', {'error': "Utilisateur introuvable."})
+
         conversation = Conversation.objects.filter(
             participants=request.user
         ).filter(
@@ -25,47 +49,9 @@ def create_conversation(request):
             conversation = Conversation.objects.create(is_group=False)
             conversation.participants.add(request.user, other_user)
 
-        return redirect('chat_app:chat_room', conversation_id=conversation.id)
+        return redirect(f"/chat/?conversation_id={conversation.id}")
 
     return render(request, 'chat_app/create_conversation.html')
-
-@login_required
-def chat_home(request):
-    user = request.user
-    conversations = Conversation.objects.filter(participants=user).prefetch_related('messages', 'participants')
-    
-    unread_counts = {}
-    for conv in conversations:
-        count = conv.messages.exclude(sender=user).exclude(read_by=user).count()
-        unread_counts[conv.id] = count
-    
-    context = {
-        'conversations': conversations,
-        'unread_counts': unread_counts,
-        'user': user,
-    }
-    return render(request, 'chat_app/home.html', context)
-
-@login_required
-def chat_room(request, conversation_id):
-    conversation = get_object_or_404(Conversation, id=conversation_id)
-    if request.user not in conversation.participants.all():
-        return render(request, 'chat_app/access_denied.html')
-    
-    unread_messages = conversation.messages.exclude(read_by=request.user)
-    for msg in unread_messages:
-        msg.read_by.add(request.user)
-    
-    messages = conversation.messages.order_by('timestamp')
-    return render(request, 'chat_app/chat.html', {
-        'conversation': conversation,
-        'messages': messages
-    })
-
-@login_required
-def conversation_list(request):
-    conversations = Conversation.objects.filter(participants=request.user)
-    return render(request, 'chat_app/conversation_list.html', {'conversations': conversations})
 
 @login_required
 def create_group_conversation(request):
@@ -83,7 +69,7 @@ def create_group_conversation(request):
         conversation.participants.add(request.user)
         conversation.participants.add(*User.objects.filter(id__in=user_ids))
 
-        return redirect('chat_app:chat_room', conversation_id=conversation.id)
+        return redirect(f"/chat/?conversation_id={conversation.id}")
 
     users = User.objects.exclude(id=request.user.id)
     return render(request, 'chat_app/create_group.html', {'users': users})
@@ -99,14 +85,44 @@ def manage_group(request, conversation_id):
         user_ids = request.POST.getlist('participants')
         conversation.participants.set(User.objects.filter(id__in=user_ids))
         conversation.participants.add(request.user)
-        messages.success(request, "Membres mis à jour.")
-        return redirect('chat_app:chat_room', conversation_id=conversation.id)
+        return redirect(f"/chat/?conversation_id={conversation.id}")
 
     users = User.objects.exclude(id=request.user.id)
     current_members = conversation.participants.all()
-
     return render(request, 'chat_app/manage_group.html', {
         'conversation': conversation,
         'users': users,
         'current_members': current_members
     })
+
+@csrf_exempt
+@login_required
+def edit_message(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        message_id = data.get('message_id')
+        content = data.get('content')
+
+        try:
+            message = Message.objects.get(id=message_id, sender=request.user)
+            message.content = content
+            message.save()
+            return JsonResponse({'success': True})
+        except Message.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Message non trouvé ou accès refusé.'})
+    return JsonResponse({'success': False, 'error': 'Méthode non autorisée.'})
+
+@csrf_exempt
+@login_required
+def delete_message(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        message_id = data.get('message_id')
+
+        try:
+            message = Message.objects.get(id=message_id, sender=request.user)
+            message.delete()
+            return JsonResponse({'success': True})
+        except Message.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Message non trouvé ou accès refusé.'})
+    return JsonResponse({'success': False, 'error': 'Méthode non autorisée.'})

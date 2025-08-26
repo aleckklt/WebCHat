@@ -1,7 +1,11 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login
-from chat_app.models import Conversation
 from .forms import CustomUserCreationForm
+from django.contrib.auth import logout
+
+def custom_logout_view(request):
+    logout(request)
+    return redirect('login')
 
 def login_view(request):
     if request.method == 'POST':
