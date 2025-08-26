@@ -24,5 +24,4 @@ urlpatterns = [
     path('', include('login_session.urls')),
     path('chat/', include('chat_app.urls')),
     path('', lambda request: redirect('login')),
-     path('logout/', auth_views.LogoutView.as_view(next_page='/'), name='logout'),
 ]
