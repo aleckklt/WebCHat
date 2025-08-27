@@ -11,4 +11,5 @@ urlpatterns = [
     path('message/edit/', views.edit_message, name='edit_message'),
     path('message/delete/', views.delete_message, name='delete_message'),
     path('message/send/', views.send_message, name='send_message'),
+    path('notifications/', views.get_unread_notifications, name='get_notifications'),
 ]

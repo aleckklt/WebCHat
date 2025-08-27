@@ -153,3 +153,22 @@ def delete_message(request):
         except Message.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Message non trouvé ou accès refusé.'})
     return JsonResponse({'success': False, 'error': 'Méthode non autorisée.'})
+
+@login_required
+def get_unread_notifications(request):
+    user = request.user
+    unread_conversations = []
+    conversations = Conversation.objects.filter(participants=user)
+    for conv in conversations:
+        unread_count = conv.messages.exclude(read_by=user).exclude(sender=user).count()
+        if unread_count > 0:
+            if conv.is_group:
+                name = conv.name
+            else:
+                name = ", ".join([p.username for p in conv.participants.exclude(id=user.id)])
+            unread_conversations.append({
+                'conversation_id': conv.id,
+                'name': name,
+                'unread_count': unread_count,
+            })
+    return JsonResponse({'notifications': unread_conversations})

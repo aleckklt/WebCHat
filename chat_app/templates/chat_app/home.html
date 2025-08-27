@@ -63,6 +63,17 @@
             color: #f39c12;
             cursor: pointer;
             margin-left: 10px;
+            position: relative;
+        }
+        .notification-bell .badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background: red;
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 5px;
+            border-radius: 50%;
         }
         .conversations-list {
             flex-grow: 1;
@@ -235,7 +246,9 @@
                 <a href="{% url 'chat_app:create_group' %}" class="new-chat-btn" title="Créer un groupe">
                     <i class="fas fa-users"></i>
                 </a>
-                <i class="fas fa-bell notification-bell" title="Notifications"></i>
+                <i class="fas fa-bell notification-bell" title="Notifications">
+                    <span class="badge" id="notification-count" style="display:none;">0</span>
+                </i>
             </div>
         </div>
 
@@ -347,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendBtn = document.getElementById('send-btn');
 
     const chatSocket = new WebSocket(
-        'ws://' + window.location.host + '/ws/chat/' + conversationId + '/'
+        (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/chat/' + conversationId + '/'
     );
 
     chatSocket.onmessage = function(e) {
@@ -372,6 +385,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         messageInput.value = '';
         messageInput.style.height = '40px';
+
+        if (data.username !== username) {
+            incrementNotificationCount();
+        }
     };
 
     sendBtn.addEventListener('click', () => {
@@ -394,6 +411,24 @@ document.addEventListener('DOMContentLoaded', () => {
         messageInput.style.height = messageInput.scrollHeight + 'px';
     });
     {% endif %}
+
+    const notificationBell = document.querySelector('.notification-bell');
+    const notificationCount = document.getElementById('notification-count');
+
+    function incrementNotificationCount() {
+        let count = parseInt(notificationCount.textContent) || 0;
+        count++;
+        notificationCount.textContent = count;
+        notificationCount.style.display = 'inline-block';
+    }
+
+    notificationBell.addEventListener('click', () => {
+        notificationCount.textContent = 0;
+        notificationCount.style.display = 'none';
+        if (location.search.indexOf('conversation_id') === -1) {
+            window.location.href = "?conversation_id={% if conversation %}{{ conversation.id }}{% else %}{% endif %}";
+        }
+    });
 
     document.querySelectorAll('.message.user').forEach(msg => {
         const optionsBtn = msg.querySelector('.options-btn');
