@@ -224,14 +224,16 @@
     </style>
 </head>
 <body>
-
 <div class="container">
     <div class="sidebar">
         <div class="sidebar-header">
             <h5>Discussions</h5>
-            <div>
-                <a href="{% url 'chat_app:create_conversation' %}" class="new-chat-btn">
-                    <i class="fas fa-plus"></i>
+            <div class="d-flex align-items-center gap-2">
+                <a href="{% url 'chat_app:create_conversation' %}" class="new-chat-btn" title="Nouvelle discussion">
+                    <i class="fas fa-user-plus"></i>
+                </a>
+                <a href="{% url 'chat_app:create_group' %}" class="new-chat-btn" title="Créer un groupe">
+                    <i class="fas fa-users"></i>
                 </a>
                 <i class="fas fa-bell notification-bell" title="Notifications"></i>
             </div>
@@ -283,7 +285,7 @@
 
                         {% if msg.sender == request.user %}
                             <div class="message-options">
-                               <i class="fas fa-ellipsis-vertical options-btn"></i>
+                                <i class="fas fa-ellipsis-vertical options-btn"></i>
                                 <div class="options-menu">
                                     <div class="option-edit">Modifier</div>
                                     <div class="option-delete">Supprimer</div>
@@ -301,14 +303,10 @@
                 {% endfor %}
             </div>
 
-            <form id="chat-form" method="post" action="{% url 'chat_app:send_message' %}">
-                {% csrf_token %}
-                <input type="hidden" name="conversation_id" value="{{ conversation.id }}">
-                <div class="chat-input-area">
-                    <textarea name="content" id="message-input" placeholder="Écrire un message..." autocomplete="off" rows="1" required></textarea>
-                    <button type="submit"><i class="fas fa-paper-plane"></i></button>
-                </div>
-            </form>
+            <div class="chat-input-area">
+                <textarea id="message-input" placeholder="Écrire un message..." autocomplete="off" rows="1" required></textarea>
+                <button id="send-btn"><i class="fas fa-paper-plane"></i></button>
+            </div>
         {% else %}
             <div class="chat-header">Sélectionnez une conversation</div>
             <div class="chat-messages d-flex align-items-center justify-content-center flex-grow-1">
@@ -340,6 +338,62 @@ document.addEventListener('DOMContentLoaded', () => {
         return cookieValue;
     }
     const csrftoken = getCookie('csrftoken');
+
+    {% if conversation %}
+    const conversationId = "{{ conversation.id }}";
+    const username = "{{ request.user.username }}";
+
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    const chatSocket = new WebSocket(
+        'ws://' + window.location.host + '/ws/chat/' + conversationId + '/'
+    );
+
+    chatSocket.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        const messageEl = document.createElement('div');
+        messageEl.classList.add('message');
+        messageEl.classList.add(data.username === username ? 'user' : 'other');
+
+        const contentEl = document.createElement('div');
+        contentEl.classList.add('content');
+        contentEl.innerHTML = data.message.replace(/\n/g, "<br>");
+
+        const meta = document.createElement('div');
+        meta.classList.add('meta');
+        meta.innerHTML = `<span class="username">${data.username}</span><span class="timestamp">${data.timestamp}</span>`;
+
+        messageEl.appendChild(contentEl);
+        messageEl.appendChild(meta);
+
+        chatMessages.appendChild(messageEl);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        messageInput.value = '';
+        messageInput.style.height = '40px';
+    };
+
+    sendBtn.addEventListener('click', () => {
+        const msg = messageInput.value.trim();
+        if (!msg) return;
+        chatSocket.send(JSON.stringify({
+            message: msg
+        }));
+    });
+
+    messageInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendBtn.click();
+        }
+    });
+
+    messageInput.addEventListener('input', () => {
+        messageInput.style.height = 'auto';
+        messageInput.style.height = messageInput.scrollHeight + 'px';
+    });
+    {% endif %}
 
     document.querySelectorAll('.message.user').forEach(msg => {
         const optionsBtn = msg.querySelector('.options-btn');
@@ -395,23 +449,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     const data = await response.json();
                     if(data.success) {
                         const newDiv = document.createElement('div');
-                        newDiv.className = 'content';
+                        newDiv.classList.add('content');
                         newDiv.innerHTML = newContent.replace(/\n/g, '<br>');
                         textarea.replaceWith(newDiv);
                     } else {
-                        alert(data.error || 'Erreur lors de la modification du message.');
+                        alert(data.error || 'Erreur lors de la modification.');
                     }
-                } else if(e.key === 'Escape') {
-                    const originalDiv = document.createElement('div');
-                    originalDiv.className = 'content';
-                    originalDiv.innerText = oldText;
-                    textarea.replaceWith(originalDiv);
                 }
             });
         });
 
         deleteBtn?.addEventListener('click', async () => {
-            if(!confirm('Voulez-vous vraiment supprimer ce message ?')) return;
+            if(!confirm('Supprimer ce message ?')) return;
 
             const response = await fetch("{% url 'chat_app:delete_message' %}", {
                 method: 'POST',
@@ -428,19 +477,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if(data.success) {
                 msg.remove();
             } else {
-                alert(data.error || 'Erreur lors de la suppression du message.');
+                alert(data.error || 'Erreur lors de la suppression.');
             }
         });
-    });
-
-    const chatForm = document.getElementById('chat-form');
-    const messageInput = document.getElementById('message-input');
-
-    chatForm.action = "{% url 'chat_app:send_message' %}";
-
-    messageInput.addEventListener('input', () => {
-        messageInput.style.height = 'auto';
-        messageInput.style.height = messageInput.scrollHeight + 'px';
     });
 });
 </script>
