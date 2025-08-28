@@ -136,6 +136,11 @@
             font-size: 0.7rem;
             font-weight: bold;
         }
+        .conversation-type-indicator {
+            font-size: 0.8rem;
+            color: #666;
+            margin-right: 5px;
+        }
         .sidebar-footer {
             padding: 1rem;
             border-top: 1px solid #ddd;
@@ -218,7 +223,7 @@
             user-select: none;
         }
         .message .meta .username {
-            fontWeight: 600;
+            font-weight: 600;
             color: #333;
         }
         .message .meta .timestamp {
@@ -388,8 +393,9 @@
                 {% for conv in conversations %}
                     <a href="?conversation_id={{ conv.id }}" class="{% if conversation and conv.id == conversation.id %}active{% endif %}">
                         {% if conv.is_group %}
-                            {{ conv.name }}
+                            <i class="fas fa-users conversation-type-indicator"></i>{{ conv.name }}
                         {% else %}
+                            <i class="fas fa-user conversation-type-indicator"></i>
                             {% for participant in conv.participants.all %}
                                 {% if participant != request.user %}
                                     {{ participant.username }}
@@ -417,8 +423,9 @@
                 <div class="chat-header">
                     <div>
                         {% if conversation.is_group %}
-                            {{ conversation.name }}
+                            <i class="fas fa-users"></i> {{ conversation.name }}
                         {% else %}
+                            <i class="fas fa-user"></i>
                             {% for participant in conversation.participants.all %}
                                 {% if participant != request.user %}
                                     {{ participant.username }}
@@ -444,7 +451,9 @@
                             {% endif %}
 
                             <div class="meta">
-                                <span class="username">{{ msg.sender.username }}</span>
+                                {% if conversation.is_group and msg.sender != request.user %}
+                                    <span class="username">{{ msg.sender.username }}</span>
+                                {% endif %}
                                 <span class="timestamp">{{ msg.timestamp|date:"H:i" }}</span>
                             </div>
                         </div>
@@ -479,17 +488,20 @@
                     {% csrf_token %}
                     <div class="mb-3">
                         <label for="users-select" class="form-label">Sélectionnez des utilisateurs</label>
-                        <select multiple class="form-select" id="users-select" name="participants" size="5">
+                        <select {% if is_group %}multiple{% endif %} class="form-select" id="users-select" name="participants" size="5">
                             {% for user in available_users %}
                                 {% if user != request.user %}
                                     <option value="{{ user.id }}">{{ user.username }}</option>
                                 {% endif %}
                             {% endfor %}
                         </select>
+                        <small id="select-help" class="form-text text-muted">
+                            Pour les groupes, maintenez Ctrl (ou Cmd) pour sélectionner plusieurs utilisateurs
+                        </small>
                     </div>
                     <div class="mb-3" id="group-name-field" style="display: none;">
                         <label for="group-name" class="form-label">Nom du groupe</label>
-                        <input type="text" class="form-control" id="group-name" name="group_name">
+                        <input type="text" class="form-control" id="group-name" name="group_name" required>
                     </div>
                 </form>
             </div>
@@ -512,6 +524,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const conversationModal = new bootstrap.Modal(document.getElementById('conversationModal'));
     const modalTitle = document.getElementById('modalTitle');
     const groupNameField = document.getElementById('group-name-field');
+    const usersSelect = document.getElementById('users-select');
+    const selectHelp = document.getElementById('select-help');
     const modalSubmit = document.getElementById('modal-submit');
     const conversationForm = document.getElementById('conversation-form');
     let isGroup = false;
@@ -519,6 +533,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('new-conversation-btn').addEventListener('click', () => {
         modalTitle.textContent = 'Nouvelle conversation';
         groupNameField.style.display = 'none';
+        usersSelect.removeAttribute('multiple');
+        selectHelp.style.display = 'none';
         isGroup = false;
         conversationModal.show();
     });
@@ -526,12 +542,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('create-group-btn').addEventListener('click', () => {
         modalTitle.textContent = 'Créer un groupe';
         groupNameField.style.display = 'block';
+        usersSelect.setAttribute('multiple', 'multiple');
+        selectHelp.style.display = 'block';
         isGroup = true;
         conversationModal.show();
     });
 
     modalSubmit.addEventListener('click', () => {
-        const participants = Array.from(document.getElementById('users-select').selectedOptions).map(opt => opt.value);
+        let participants;
+        
+        if (isGroup) {
+            participants = Array.from(usersSelect.selectedOptions).map(opt => opt.value);
+        } else {
+            participants = [usersSelect.value];
+        }
         
         if (participants.length === 0) {
             alert('Veuillez sélectionner au moins un utilisateur');
@@ -589,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     {% if conversation %}
     const conversationId = "{{ conversation.id }}";
+    const isGroupConversation = {% if conversation.is_group %}true{% else %}false{% endif %};
     const username = "{{ request.user.username }}";
 
     const messageInput = document.getElementById('message-input');
@@ -611,7 +636,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const meta = document.createElement('div');
         meta.classList.add('meta');
-        meta.innerHTML = `<span class="username">${data.username}</span><span class="timestamp">${data.timestamp}</span>`;
+        
+        if (isGroupConversation && data.username !== username) {
+            meta.innerHTML = `<span class="username">${data.username}</span><span class="timestamp">${data.timestamp}</span>`;
+        } else {
+            meta.innerHTML = `<span class="timestamp">${data.timestamp}</span>`;
+        }
 
         messageEl.appendChild(contentEl);
         
