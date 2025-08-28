@@ -97,7 +97,7 @@ USE_TZ = True
 STATIC_URL = '/static/'  # **important** le slash au début
 
 STATICFILES_DIRS = [
-    BASE_DIR / "static",  # dossier static dans la racine de ton projet (avec manage.py)
+      # dossier static dans la racine de ton projet (avec manage.py)
 ]
 
 # Optionnel (utile en production):
