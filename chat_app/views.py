@@ -15,6 +15,8 @@ def chat_home(request):
     messages = []
 
     conversations = Conversation.objects.filter(participants=user).prefetch_related('messages', 'participants')
+    for conv in conversations:
+        conv.unread_count = conv.messages.exclude(read_by=user).exclude(sender=user).count()
 
     if conversation_id:
         conversation = get_object_or_404(Conversation, id=conversation_id, participants=user)
@@ -22,58 +24,64 @@ def chat_home(request):
         for msg in unread_messages:
             msg.read_by.add(user)
         messages = conversation.messages.order_by('timestamp')
+    available_users = User.objects.exclude(id=user.id)
+    total_unread = sum(conv.unread_count for conv in conversations)
 
     context = {
         'conversations': conversations,
         'conversation': conversation,
-        'messages': messages
+        'messages': messages,
+        'available_users': available_users,
+        'total_unread': total_unread,
     }
     return render(request, 'chat_app/home.html', context)
 
 @login_required
+@require_POST
 def create_conversation(request):
-    if request.method == 'POST':
-        other_username = request.POST.get('username')
-        try:
-            other_user = User.objects.get(username=other_username)
-        except User.DoesNotExist:
-            return render(request, 'chat_app/create_conversation.html', {'error': "Utilisateur introuvable."})
-
-        conversation = Conversation.objects.filter(
-            participants=request.user
-        ).filter(
-            participants=other_user,
+    try:
+        participant_ids = request.POST.getlist('participants')
+        if not participant_ids:
+            return JsonResponse({'success': False, 'error': 'Aucun participant sélectionné'})
+        participant = get_object_or_404(User, id=participant_ids[0])
+        existing_conv = Conversation.objects.filter(
+            participants=request.user,
             is_group=False
+        ).filter(
+            participants=participant
         ).first()
-
-        if not conversation:
-            conversation = Conversation.objects.create(is_group=False)
-            conversation.participants.add(request.user, other_user)
-
-        return redirect(f"/chat/?conversation_id={conversation.id}")
-
-    return render(request, 'chat_app/create_conversation.html')
+        
+        if existing_conv:
+            return JsonResponse({
+                'success': True, 
+                'conversation_id': existing_conv.id
+            })
+        conversation = Conversation.objects.create(is_group=False)
+        conversation.participants.add(request.user, participant)
+        
+        return JsonResponse({'success': True, 'conversation_id': conversation.id})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @login_required
+@require_POST
 def create_group_conversation(request):
-    if request.method == 'POST':
-        group_name = request.POST.get('name')
-        user_ids = request.POST.getlist('participants')
-
-        if not group_name or not user_ids:
-            return render(request, 'chat_app/create_group.html', {
-                'error': "Nom du groupe et membres requis.",
-                'users': User.objects.exclude(id=request.user.id)
-            })
-
+    try:
+        group_name = request.POST.get('group_name')
+        participant_ids = request.POST.getlist('participants')
+        
+        if not group_name or not participant_ids:
+            return JsonResponse({'success': False, 'error': 'Nom du groupe et membres requis'})
         conversation = Conversation.objects.create(is_group=True, name=group_name)
         conversation.participants.add(request.user)
-        conversation.participants.add(*User.objects.filter(id__in=user_ids))
-
-        return redirect(f"/chat/?conversation_id={conversation.id}")
-
-    users = User.objects.exclude(id=request.user.id)
-    return render(request, 'chat_app/create_group.html', {'users': users})
+        participants = User.objects.filter(id__in=participant_ids)
+        conversation.participants.add(*participants)
+        
+        return JsonResponse({'success': True, 'conversation_id': conversation.id})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @login_required
 def manage_group(request, conversation_id):
@@ -118,41 +126,37 @@ def send_message(request):
 
 @csrf_exempt
 @login_required
+@require_POST
 def edit_message(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'success': False, 'error': 'Données JSON invalides.'})
+    try:
+        data = json.loads(request.body)
         message_id = data.get('message_id')
         content = data.get('content')
 
-        try:
-            message = Message.objects.get(id=message_id, sender=request.user)
-            message.content = content
-            message.save()
-            return JsonResponse({'success': True})
-        except Message.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'Message non trouvé ou accès refusé.'})
-    return JsonResponse({'success': False, 'error': 'Méthode non autorisée.'})
+        message = Message.objects.get(id=message_id, sender=request.user)
+        message.content = content
+        message.save()
+        return JsonResponse({'success': True})
+    except Message.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Message non trouvé ou accès refusé.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @csrf_exempt
 @login_required
+@require_POST
 def delete_message(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'success': False, 'error': 'Données JSON invalides.'})
+    try:
+        data = json.loads(request.body)
         message_id = data.get('message_id')
 
-        try:
-            message = Message.objects.get(id=message_id, sender=request.user)
-            message.delete()
-            return JsonResponse({'success': True})
-        except Message.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'Message non trouvé ou accès refusé.'})
-    return JsonResponse({'success': False, 'error': 'Méthode non autorisée.'})
+        message = Message.objects.get(id=message_id, sender=request.user)
+        message.delete()
+        return JsonResponse({'success': True})
+    except Message.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Message non trouvé ou accès refusé.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @login_required
 def get_unread_notifications(request):

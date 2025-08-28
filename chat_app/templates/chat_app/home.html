@@ -41,7 +41,7 @@
             display: flex;
             gap: 0.5rem;
         }
-        header .actions a {
+        header .actions button {
             background: transparent;
             border: none;
             color: white;
@@ -51,18 +51,6 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            text-decoration: none;
-        }
-        header .actions a:hover {
-            color: #d2f5e3;
-        }
-        header .actions button {
-            background: transparent;
-            border: none;
-            color: white;
-            font-size: 1.3rem;
-            cursor: pointer;
-            position: relative;
         }
         header .actions button:hover {
             color: #d2f5e3;
@@ -120,6 +108,7 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            position: relative;
         }
         .conversations-list a.active,
         .conversations-list a:hover {
@@ -130,6 +119,22 @@
             padding: 1rem;
             color: #999;
             font-style: italic;
+        }
+        .unread-badge {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: #25D366;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: bold;
         }
         .sidebar-footer {
             padding: 1rem;
@@ -213,7 +218,7 @@
             user-select: none;
         }
         .message .meta .username {
-            font-weight: 600;
+            fontWeight: 600;
             color: #333;
         }
         .message .meta .timestamp {
@@ -329,6 +334,17 @@
             border-radius: 50%;
         }
 
+        .modal-content {
+            font-family: inherit;
+        }
+        .modal-header {
+            background-color: #128C7E;
+            color: white;
+        }
+        .modal-footer button {
+            min-width: 100px;
+        }
+
         @media (max-width: 900px) {
             .content {
                 flex-direction: column;
@@ -350,15 +366,18 @@
     <header>
         <div class="welcome">WebChat - Bonjour {{ request.user.username }}</div>
         <div class="actions">
-            <a href="{% url 'chat_app:create_conversation' %}" title="Nouvelle discussion">
+            <button id="new-conversation-btn" title="Nouvelle discussion">
                 <i class="fas fa-user-plus"></i>
-            </a>
-            <a href="{% url 'chat_app:create_group' %}" title="Créer un groupe">
+                <span class="tooltip-text">Nouvelle discussion</span>
+            </button>
+            <button id="create-group-btn" title="Créer un groupe">
                 <i class="fas fa-users"></i>
-            </a>
+                <span class="tooltip-text">Créer un groupe</span>
+            </button>
             <button class="notification-bell" title="Notifications">
                 <i class="fas fa-bell"></i>
-                <span class="badge" id="notification-count" style="display:none;">0</span>
+                <span class="badge" id="notification-count">{{ total_unread }}</span>
+                <span class="tooltip-text">Notifications</span>
             </button>
         </div>
     </header>
@@ -373,9 +392,12 @@
                         {% else %}
                             {% for participant in conv.participants.all %}
                                 {% if participant != request.user %}
-                                    {{ participant.username }}{% if not forloop.last %}, {% endif %}
+                                    {{ participant.username }}
                                 {% endif %}
                             {% endfor %}
+                        {% endif %}
+                        {% if conv.unread_count > 0 %}
+                            <span class="unread-badge">{{ conv.unread_count }}</span>
                         {% endif %}
                     </a>
                 {% empty %}
@@ -399,7 +421,7 @@
                         {% else %}
                             {% for participant in conversation.participants.all %}
                                 {% if participant != request.user %}
-                                    {{ participant.username }}{% if not forloop.last %}, {% endif %}
+                                    {{ participant.username }}
                                 {% endif %}
                             {% endfor %}
                         {% endif %}
@@ -445,12 +467,109 @@
     </div>
 </div>
 
+<div class="modal fade" id="conversationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Nouvelle conversation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="conversation-form" method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="users-select" class="form-label">Sélectionnez des utilisateurs</label>
+                        <select multiple class="form-select" id="users-select" name="participants" size="5">
+                            {% for user in available_users %}
+                                {% if user != request.user %}
+                                    <option value="{{ user.id }}">{{ user.username }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3" id="group-name-field" style="display: none;">
+                        <label for="group-name" class="form-label">Nom du groupe</label>
+                        <input type="text" class="form-control" id="group-name" name="group_name">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" id="modal-submit">Créer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const chatMessages = document.getElementById('chat-messages');
     if(chatMessages) {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
+
+    const conversationModal = new bootstrap.Modal(document.getElementById('conversationModal'));
+    const modalTitle = document.getElementById('modalTitle');
+    const groupNameField = document.getElementById('group-name-field');
+    const modalSubmit = document.getElementById('modal-submit');
+    const conversationForm = document.getElementById('conversation-form');
+    let isGroup = false;
+
+    document.getElementById('new-conversation-btn').addEventListener('click', () => {
+        modalTitle.textContent = 'Nouvelle conversation';
+        groupNameField.style.display = 'none';
+        isGroup = false;
+        conversationModal.show();
+    });
+
+    document.getElementById('create-group-btn').addEventListener('click', () => {
+        modalTitle.textContent = 'Créer un groupe';
+        groupNameField.style.display = 'block';
+        isGroup = true;
+        conversationModal.show();
+    });
+
+    modalSubmit.addEventListener('click', () => {
+        const participants = Array.from(document.getElementById('users-select').selectedOptions).map(opt => opt.value);
+        
+        if (participants.length === 0) {
+            alert('Veuillez sélectionner au moins un utilisateur');
+            return;
+        }
+
+        if (isGroup && !document.getElementById('group-name').value.trim()) {
+            alert('Veuillez entrer un nom pour le groupe');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        participants.forEach(id => formData.append('participants', id));
+        
+        if (isGroup) {
+            formData.append('group_name', document.getElementById('group-name').value);
+            formData.append('is_group', 'true');
+        }
+
+        fetch(isGroup ? "{% url 'chat_app:create_group' %}" : "{% url 'chat_app:create_conversation' %}", {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                conversationModal.hide();
+                window.location.href = '?conversation_id=' + data.conversation_id;
+            } else {
+                alert(data.error || 'Une erreur est survenue');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Une erreur est survenue');
+        });
+    });
 
     function getCookie(name) {
         let cookieValue = null;
@@ -495,6 +614,7 @@ document.addEventListener('DOMContentLoaded', () => {
         meta.innerHTML = `<span class="username">${data.username}</span><span class="timestamp">${data.timestamp}</span>`;
 
         messageEl.appendChild(contentEl);
+        
         if (data.username === username) {
             const optionsDiv = document.createElement('div');
             optionsDiv.classList.add('message-options');
@@ -506,6 +626,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
             messageEl.appendChild(optionsDiv);
+            
             setTimeout(() => {
                 attachMessageOptionsListeners(messageEl);
             }, 100);
@@ -553,15 +674,12 @@ document.addEventListener('DOMContentLoaded', () => {
         let count = parseInt(notificationCount.textContent) || 0;
         count++;
         notificationCount.textContent = count;
-        notificationCount.style.display = 'inline-block';
+        notificationCount.style.display = count > 0 ? 'inline-block' : 'none';
     }
 
     notificationBell.addEventListener('click', () => {
         notificationCount.textContent = 0;
         notificationCount.style.display = 'none';
-        if (location.search.indexOf('conversation_id') === -1 && '{{ conversation.id }}') {
-            window.location.href = "?conversation_id={{ conversation.id }}";
-        }
     });
 
     function attachMessageOptionsListeners(msg) {
