@@ -1,4 +1,4 @@
-{% load static%}
+{% load static %}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -557,7 +557,7 @@
         <div class="actions">
             <button id="new-conversation-btn" title="Nouvelle discussion"><i class="fas fa-user-plus"></i><span class="tooltip-text">Nouvelle discussion</span></button>
             <button id="create-group-btn" title="Créer un groupe"><i class="fas fa-users"></i><span class="tooltip-text">Créer un groupe</span></button>
-            <button class="notification-bell" title="Notifications"><i class="fas fa-bell"></i><span class="badge" id="notification-count">{{ total_unread }}</span><span class="tooltip-text">Notifications</span></button>
+            <button class="notification-bell" title="Notifications"><i class="fas fa-bell"></i><span class="badge" id="notification-count" {% if total_unread == 0 %}style="display: none;"{% endif %}>{{ total_unread }}</span><span class="tooltip-text">Notifications</span></button>
         </div>
     </header>
 
@@ -836,7 +836,15 @@ document.addEventListener('DOMContentLoaded', () => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
         messageInput.value = '';
         messageInput.style.height = '40px';
-        if (data.username !== username) incrementNotificationCount();
+        
+        if (data.username !== username) {
+            incrementNotificationCount();
+            updateConversationUnreadCount(conversationId, true);
+        }
+    };
+
+    chatSocket.onclose = function(e) {
+        console.error('Chat socket closed unexpectedly');
     };
 
     sendBtn.addEventListener('click', () => {
@@ -855,7 +863,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     {% endif %}
 
-    const notificationBell = document.querySelector('.notification-bell');
     const notificationCount = document.getElementById('notification-count');
 
     function incrementNotificationCount() {
@@ -865,10 +872,35 @@ document.addEventListener('DOMContentLoaded', () => {
         notificationCount.style.display = count > 0 ? 'inline-block' : 'none';
     }
 
-    notificationBell.addEventListener('click', () => {
-        notificationCount.textContent = 0;
-        notificationCount.style.display = 'none';
-    });
+    function decrementNotificationCount() {
+        let count = parseInt(notificationCount.textContent) || 0;
+        count = Math.max(0, count - 1);
+        notificationCount.textContent = count;
+        notificationCount.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+
+    function updateConversationUnreadCount(conversationId, increment) {
+        const conversationLink = document.querySelector(`.conversations-list a[href*="conversation_id=${conversationId}"]`);
+        if (conversationLink) {
+            let unreadBadge = conversationLink.querySelector('.unread-badge');
+            
+            if (increment) {
+                let count = unreadBadge ? parseInt(unreadBadge.textContent) : 0;
+                count++;
+                
+                if (unreadBadge) {
+                    unreadBadge.textContent = count;
+                } else {
+                    unreadBadge = document.createElement('span');
+                    unreadBadge.classList.add('unread-badge');
+                    unreadBadge.textContent = count;
+                    conversationLink.appendChild(unreadBadge);
+                }
+            } else if (unreadBadge) {
+                unreadBadge.remove();
+            }
+        }
+    }
 
     function attachMessageOptionsListeners(msg) {
         const optionsBtn = msg.querySelector('.options-btn');
