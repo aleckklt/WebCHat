@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 import json
+from django.db import models
 
 @login_required
 def chat_home(request):
@@ -23,7 +24,11 @@ def chat_home(request):
         unread_messages = conversation.messages.exclude(read_by=user)
         for msg in unread_messages:
             msg.read_by.add(user)
-        messages = conversation.messages.order_by('timestamp')
+        messages = conversation.messages.filter(
+            models.Q(is_deleted=False) & 
+            ~models.Q(deleted_for_users=user)
+        ).order_by('timestamp')
+    
     available_users = User.objects.exclude(id=user.id)
     total_unread = sum(conv.unread_count for conv in conversations)
 
@@ -176,3 +181,34 @@ def get_unread_notifications(request):
                 'unread_count': unread_count,
             })
     return JsonResponse({'notifications': unread_conversations})
+
+@csrf_exempt
+@login_required
+@require_POST
+def delete_message_for_me(request):
+    try:
+        data = json.loads(request.body)
+        message_id = data.get('message_id')
+
+        message = get_object_or_404(Message, id=message_id)
+        message.deleted_for_users.add(request.user)
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@csrf_exempt
+@login_required
+@require_POST
+def delete_message_for_everyone(request):
+    try:
+        data = json.loads(request.body)
+        message_id = data.get('message_id')
+
+        message = get_object_or_404(Message, id=message_id)
+        if message.sender != request.user and not request.user.is_staff:
+            return JsonResponse({'success': False, 'error': 'Permission refusée'})
+        message.is_deleted = True
+        message.save()
+        return JsonResponse({'success': True})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

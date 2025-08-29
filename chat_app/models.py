@@ -18,6 +18,9 @@ class Message(models.Model):
     content = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
     read_by = models.ManyToManyField(User, related_name='read_messages', blank=True)
-
-    def __str__(self):
-        return f"{self.sender.username}: {self.content[:30]}"
+    is_deleted = models.BooleanField(default=False)
+    deleted_for_users = models.ManyToManyField(User, related_name='deleted_messages', blank=True)
+    
+    @property
+    def is_deleted_for_user(self, user):
+        return self.is_deleted or user in self.deleted_for_users.all()
