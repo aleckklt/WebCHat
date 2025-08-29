@@ -1,4 +1,4 @@
-{% load static %}
+{% load static%}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -478,6 +478,50 @@
             line-height: 1.5;
         }
         
+        .search-container {
+            margin-bottom: 1rem;
+            position: relative;
+        }
+        
+        .search-container i {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+        }
+        
+        .search-input {
+            padding-left: 35px;
+            width: 100%;
+        }
+        
+        .user-list-container {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+        }
+        
+        .user-item {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            border-bottom: 1px solid #f1f1f1;
+        }
+        
+        .user-item:last-child {
+            border-bottom: none;
+        }
+        
+        .user-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .user-item.selected {
+            background-color: #e9ecef;
+        }
+        
         @media (max-width: 900px) {
             .content {
                 flex-direction: column;
@@ -579,9 +623,18 @@
             <div class="modal-header"><h5 class="modal-title" id="modalTitle">Nouvelle conversation</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
             <div class="modal-body">
                 <form id="conversation-form" method="post">{% csrf_token %}
-                    <div class="mb-3"><label for="users-select" class="form-label">Sélectionnez des utilisateurs</label>
-                        <select {% if is_group %}multiple{% endif %} class="form-select" id="users-select" name="participants" size="5">{% for user in available_users %}{% if user != request.user %}<option value="{{ user.id }}">{{ user.username }}</option>{% endif %}{% endfor %}</select>
-                        <small id="select-help" class="form-text text-muted">Pour les groupes, maintenez Ctrl (ou Cmd) pour sélectionner plusieurs utilisateurs</small>
+                    <div class="search-container">
+                        <i class="fas fa-search"></i>
+                        <input type="text" class="form-control search-input" id="user-search" placeholder="Rechercher un utilisateur...">
+                    </div>
+                    <div class="user-list-container" id="user-list">
+                        {% for user in available_users %}
+                            {% if user != request.user %}
+                                <div class="user-item" data-user-id="{{ user.id }}" data-username="{{ user.username }}">
+                                    {{ user.username }}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
                     </div>
                     <div class="mb-3" id="group-name-field" style="display: none;"><label for="group-name" class="form-label">Nom du groupe</label><input type="text" class="form-control" id="group-name" name="group_name" required></div>
                 </form>
@@ -619,40 +672,83 @@ document.addEventListener('DOMContentLoaded', () => {
     const participantInfoModal = new bootstrap.Modal(document.getElementById('participantInfoModal'));
     const modalTitle = document.getElementById('modalTitle');
     const groupNameField = document.getElementById('group-name-field');
-    const usersSelect = document.getElementById('users-select');
-    const selectHelp = document.getElementById('select-help');
     const modalSubmit = document.getElementById('modal-submit');
     const participantInfoBtn = document.getElementById('participant-info-btn');
+    const userSearch = document.getElementById('user-search');
+    const userList = document.getElementById('user-list');
     let isGroup = false;
+    let selectedUsers = [];
 
     if (participantInfoBtn) participantInfoBtn.addEventListener('click', () => participantInfoModal.show());
 
     document.getElementById('new-conversation-btn').addEventListener('click', () => {
         modalTitle.textContent = 'Nouvelle conversation';
         groupNameField.style.display = 'none';
-        usersSelect.removeAttribute('multiple');
-        selectHelp.style.display = 'none';
         isGroup = false;
+        selectedUsers = [];
+        resetUserList();
         conversationModal.show();
     });
 
     document.getElementById('create-group-btn').addEventListener('click', () => {
         modalTitle.textContent = 'Créer un groupe';
         groupNameField.style.display = 'block';
-        usersSelect.setAttribute('multiple', 'multiple');
-        selectHelp.style.display = 'block';
         isGroup = true;
+        selectedUsers = [];
+        resetUserList();
         conversationModal.show();
     });
 
+    userSearch.addEventListener('input', () => {
+        const searchTerm = userSearch.value.toLowerCase();
+        const userItems = userList.querySelectorAll('.user-item');
+        
+        userItems.forEach(item => {
+            const username = item.dataset.username.toLowerCase();
+            if (username.includes(searchTerm)) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    });
+
+    userList.addEventListener('click', (e) => {
+        if (e.target.classList.contains('user-item')) {
+            const userId = e.target.dataset.userId;
+            
+            if (isGroup) {
+                e.target.classList.toggle('selected');
+                if (e.target.classList.contains('selected')) {
+                    selectedUsers.push(userId);
+                } else {
+                    selectedUsers = selectedUsers.filter(id => id !== userId);
+                }
+            } else {
+                userList.querySelectorAll('.user-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+                e.target.classList.add('selected');
+                selectedUsers = [userId];
+            }
+        }
+    });
+
+    function resetUserList() {
+        userSearch.value = '';
+        userList.querySelectorAll('.user-item').forEach(item => {
+            item.style.display = 'block';
+            item.classList.remove('selected');
+        });
+    }
+
     modalSubmit.addEventListener('click', () => {
-        let participants = isGroup ? Array.from(usersSelect.selectedOptions).map(opt => opt.value) : [usersSelect.value];
-        if (participants.length === 0) { alert('Veuillez sélectionner au moins un utilisateur'); return; }
+        if (selectedUsers.length === 0) { alert('Veuillez sélectionner au moins un utilisateur'); return; }
         if (isGroup && !document.getElementById('group-name').value.trim()) { alert('Veuillez entrer un nom pour le groupe'); return; }
 
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-        participants.forEach(id => formData.append('participants', id));
+        selectedUsers.forEach(id => formData.append('participants', id));
         if (isGroup) { formData.append('group_name', document.getElementById('group-name').value); formData.append('is_group', 'true'); }
 
         fetch(isGroup ? "{% url 'chat_app:create_group' %}" : "{% url 'chat_app:create_conversation' %}", { method: 'POST', body: formData })
@@ -846,7 +942,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     msg.remove();
                     const remainingMessages = document.querySelectorAll('.message');
                     if (remainingMessages.length === 0) {
-                        const noMessagesEl = document.createElement('div');
+                        const noMessagesEl = document.cr
+
+eateElement('div');
                         noMessagesEl.classList.add('no-conv');
                         noMessagesEl.id = 'no-messages';
                         noMessagesEl.textContent = 'Aucun message';
